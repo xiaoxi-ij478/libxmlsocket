@@ -7,14 +7,21 @@
 
 #include <unistd.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <iostream>
 
 #include "eventloop.hpp"
 #include "xmlsocket.hpp"
 
-XMLSocketServer::XMLSocketServer(unsigned listen_port) :
+XMLSocketServer::XMLSocketServer(
+    EventLoop &looper,
+    unsigned short listen_port
+) :
     listen_socket_fd(-1),
     listen_port(listen_port),
-    looper(),
+    looper(looper),
     remote_fds()
 {
 }
@@ -22,8 +29,8 @@ XMLSocketServer::XMLSocketServer(unsigned listen_port) :
 XMLSocketServer::~XMLSocketServer()
 {
     looper.remove_fd_listener(listen_socket_fd);
-
     std::unordered_set<int> b_remote_fds(remote_fds);
+
     for (int i : b_remote_fds)
         close_fd(i);
 }
@@ -35,8 +42,19 @@ void XMLSocketServer::start_listen()
     if (fd == -1)
         throw std::system_error(std::error_code(errno, std::system_category()));
 
+    sockaddr_in sa = {
+        AF_INET,
+        htons(listen_port),
+        inet_addr("0.0.0.0")
+    };
     listen_socket_fd = fd;
-    listen(fd, 0);
+
+    if (bind(fd, reinterpret_cast<const sockaddr *>(&sa), sizeof(sa)) == -1)
+        throw std::system_error(std::error_code(errno, std::system_category()));
+
+    if (listen(fd, 100) == -1)
+        throw std::system_error(std::error_code(errno, std::system_category()));
+
     looper.add_fd_listener(
         fd,
         std::bind(
@@ -70,19 +88,24 @@ void XMLSocketServer::check_socket_policy_request(int fd)
 {
     /*
      * as per https://web.archive.org/web/20160308034611/http://www.adobe.com/devnet/flashplayer/articles/socket_policy_files.html#:~:text=What%20data%20is%20sent%20in%20the%20request%20and%20response
-     * if we checked it's sending us <policy-file-request/>\x00 then
-     * receive and close the socket
+     * if we found it's sending us <policy-file-request/>\x00 then
+     *     receive and close the socket
      * else
-     * ignore everything and transfer the callback to subclasses
+     *     ignore everything and transfer the callback to subclasses
+     * fi
      */
     std::string buffer;
     buffer.resize(23);
     int ret = recv(fd, buffer.data(), buffer.size(), MSG_PEEK);
 
-    if (ret == 0) {
-        // shutdown? should not happen
-        close_fd(fd);
-        return;
+    switch (ret) {
+        case 0:
+            // remote shutdown
+            close_fd(fd);
+            return;
+
+        case -1:
+            throw std::system_error(std::error_code(errno, std::system_category()));
     }
 
     if (buffer != "<policy-file-request/>\0") {
@@ -118,4 +141,15 @@ void XMLSocketServer::send_data(int remote_fd, const std::string &buffer)
 {
     for (unsigned i = 0; i < buffer.size(); i += MAX_SEND)
         send(remote_fd, buffer.c_str() + i, std::min(buffer.size() - i, MAX_SEND), 0);
+}
+
+std::string XMLSocketServer::get_policy_xml()
+{
+    return
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<!DOCTYPE cross-domain-policy SYSTEM \"/xml/dtds/cross-domain-policy.dtd\">\n"
+        "<cross-domain-policy>\n"
+        "   <site-control permitted-cross-domain-policies=\"all\"/>\n"
+        "   <allow-access-from domain=\"*\"/>\n"
+        "</cross-domain-policy>\n";
 }

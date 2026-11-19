@@ -14,7 +14,7 @@
 				<Option createDefFile="1" />
 				<Option createStaticLib="1" />
 				<Compiler>
-					<Add option="-g" />
+					<Add option="-ggdb3" />
 				</Compiler>
 			</Target>
 			<Target title="Release">
@@ -33,7 +33,6 @@
 			</Target>
 		</Build>
 		<Compiler>
-			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 			<Add directory="../eventloop" />
 		</Compiler>
