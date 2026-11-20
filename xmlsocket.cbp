@@ -33,7 +33,7 @@
 			</Target>
 		</Build>
 		<Compiler>
-			<Add option="-fexceptions" />
+			<Add option="-std=gnu++17" />
 			<Add directory="../eventloop" />
 		</Compiler>
 		<Linker>

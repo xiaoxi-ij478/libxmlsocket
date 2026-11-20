@@ -12,15 +12,16 @@ class XMLSocketServer
         constexpr static unsigned long MAX_SEND = 1024;
         int listen_socket_fd;
         unsigned short listen_port;
-        EventLoop &looper;
 
         void on_listen_socket_fd_accept(int);
-        void check_socket_policy_request(int fd);
+        void check_socket_policy_request(int remote_fd);
+        void on_socket_data_avail(int remote_fd);
 
     protected:
         std::unordered_set<int> remote_fds;
+        EventLoop &looper;
 
-        static inline unsigned get_bytes_available(int remote_fd)
+        static unsigned get_bytes_available(int remote_fd)
         {
             int val;
 
@@ -34,8 +35,9 @@ class XMLSocketServer
         void send_data(int remote_fd, const std::string &buffer);
 
         virtual std::string get_policy_xml();
-        virtual void on_new_connection(int remote_fd) = 0;
-        virtual void on_socket_data(int remote_fd) = 0;
+        virtual void on_connection_closed(int remote_fd);
+        virtual void on_new_connection(int remote_fd);
+        virtual void on_socket_data(int remote_fd);
 
     public:
         XMLSocketServer(EventLoop &looper, unsigned short listen_port);

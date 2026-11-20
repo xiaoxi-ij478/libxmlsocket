@@ -21,15 +21,19 @@ XMLSocketServer::XMLSocketServer(
 ) :
     listen_socket_fd(-1),
     listen_port(listen_port),
-    looper(looper),
-    remote_fds()
+    remote_fds(),
+    looper(looper)
 {
 }
 
 XMLSocketServer::~XMLSocketServer()
 {
-    looper.remove_fd_listener(listen_socket_fd);
-    std::unordered_set<int> b_remote_fds(remote_fds);
+    if (listen_socket_fd != -1) {
+        looper.remove_fd_listener(listen_socket_fd);
+        close(listen_socket_fd);
+    }
+
+    decltype(remote_fds) b_remote_fds(remote_fds);
 
     for (int i : b_remote_fds)
         close_fd(i);
@@ -67,24 +71,24 @@ void XMLSocketServer::start_listen()
 
 void XMLSocketServer::on_listen_socket_fd_accept(int)
 {
-    int fd = accept(listen_socket_fd, nullptr, nullptr);
+    int remote_fd = accept(listen_socket_fd, nullptr, nullptr);
 
-    if (fd == -1)
+    if (remote_fd == -1)
         throw std::system_error(std::error_code(errno, std::system_category()));
 
-    remote_fds.insert(fd);
+    remote_fds.insert(remote_fd);
     looper.add_fd_listener(
-        fd,
+        remote_fd,
         std::bind(
             std::mem_fn(&XMLSocketServer::check_socket_policy_request),
             this,
             std::placeholders::_1
         )
     );
-    on_new_connection(fd);
+    on_new_connection(remote_fd);
 }
 
-void XMLSocketServer::check_socket_policy_request(int fd)
+void XMLSocketServer::check_socket_policy_request(int remote_fd)
 {
     /*
      * as per https://web.archive.org/web/20160308034611/http://www.adobe.com/devnet/flashplayer/articles/socket_policy_files.html#:~:text=What%20data%20is%20sent%20in%20the%20request%20and%20response
@@ -96,12 +100,12 @@ void XMLSocketServer::check_socket_policy_request(int fd)
      */
     std::string buffer;
     buffer.resize(23);
-    int ret = recv(fd, buffer.data(), buffer.size(), MSG_PEEK);
+    int ret = recv(remote_fd, buffer.data(), buffer.size(), MSG_PEEK);
 
     switch (ret) {
         case 0:
             // remote shutdown
-            close_fd(fd);
+            close_fd(remote_fd);
             return;
 
         case -1:
@@ -110,11 +114,11 @@ void XMLSocketServer::check_socket_policy_request(int fd)
 
     if (buffer != "<policy-file-request/>\0") {
         // this is not policy file request, transfer callback
-        looper.remove_fd_listener(fd);
+        looper.remove_fd_listener(remote_fd);
         looper.add_fd_listener(
-            fd,
+            remote_fd,
             std::bind(
-                std::mem_fn(&XMLSocketServer::on_socket_data),
+                std::mem_fn(&XMLSocketServer::on_socket_data_avail),
                 this,
                 std::placeholders::_1
             )
@@ -123,8 +127,13 @@ void XMLSocketServer::check_socket_policy_request(int fd)
     }
 
     // is policy ... send it
-    send_data(fd, get_policy_xml());
-    close_fd(fd);
+    send_data(remote_fd, get_policy_xml());
+    close_fd(remote_fd);
+}
+
+void XMLSocketServer::on_socket_data_avail(int remote_fd)
+{
+    on_socket_data(remote_fd);
 }
 
 void XMLSocketServer::close_fd(int remote_fd)
@@ -135,12 +144,14 @@ void XMLSocketServer::close_fd(int remote_fd)
     remote_fds.erase(remote_fd);
     looper.remove_fd_listener(remote_fd);
     close(remote_fd);
+    on_connection_closed(remote_fd);
 }
 
 void XMLSocketServer::send_data(int remote_fd, const std::string &buffer)
 {
     for (unsigned i = 0; i < buffer.size(); i += MAX_SEND)
-        send(remote_fd, buffer.c_str() + i, std::min(buffer.size() - i, MAX_SEND), 0);
+        if (send(remote_fd, buffer.c_str() + i, std::min(buffer.size() - i, MAX_SEND), 0) == -1)
+            throw std::system_error(std::error_code(errno, std::system_category()));
 }
 
 std::string XMLSocketServer::get_policy_xml()
@@ -152,4 +163,16 @@ std::string XMLSocketServer::get_policy_xml()
         "   <site-control permitted-cross-domain-policies=\"all\"/>\n"
         "   <allow-access-from domain=\"*\"/>\n"
         "</cross-domain-policy>\n";
+}
+
+void XMLSocketServer::on_connection_closed(int)
+{
+}
+
+void XMLSocketServer::on_new_connection(int)
+{
+}
+
+void XMLSocketServer::on_socket_data(int)
+{
 }
