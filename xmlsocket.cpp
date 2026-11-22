@@ -44,7 +44,7 @@ void XMLSocketServer::start_listen()
     int fd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (fd == -1)
-        throw std::system_error(std::error_code(errno, std::system_category()));
+        throw std::system_error(std::error_code(errno, std::general_category()));
 
     sockaddr_in sa = {
         AF_INET,
@@ -54,10 +54,10 @@ void XMLSocketServer::start_listen()
     listen_socket_fd = fd;
 
     if (bind(fd, reinterpret_cast<const sockaddr *>(&sa), sizeof(sa)) == -1)
-        throw std::system_error(std::error_code(errno, std::system_category()));
+        throw std::system_error(std::error_code(errno, std::general_category()));
 
     if (listen(fd, 100) == -1)
-        throw std::system_error(std::error_code(errno, std::system_category()));
+        throw std::system_error(std::error_code(errno, std::general_category()));
 
     looper.add_fd_listener(
         fd,
@@ -74,7 +74,7 @@ void XMLSocketServer::on_listen_socket_fd_accept(int)
     int remote_fd = accept(listen_socket_fd, nullptr, nullptr);
 
     if (remote_fd == -1)
-        throw std::system_error(std::error_code(errno, std::system_category()));
+        throw std::system_error(std::error_code(errno, std::general_category()));
 
     remote_fds.insert(remote_fd);
     looper.add_fd_listener(
@@ -100,16 +100,15 @@ void XMLSocketServer::check_socket_policy_request(int remote_fd)
      */
     std::string buffer;
     buffer.resize(23);
-    int ret = recv(remote_fd, buffer.data(), buffer.size(), MSG_PEEK);
 
-    switch (ret) {
+    switch (recv(remote_fd, buffer.data(), buffer.size(), MSG_PEEK)) {
         case 0:
             // remote shutdown
             close_fd(remote_fd);
             return;
 
         case -1:
-            throw std::system_error(std::error_code(errno, std::system_category()));
+            throw std::system_error(std::error_code(errno, std::general_category()));
     }
 
     if (buffer != "<policy-file-request/>\0") {
@@ -151,7 +150,7 @@ void XMLSocketServer::send_data(int remote_fd, const std::string &buffer)
 {
     for (unsigned i = 0; i < buffer.size(); i += MAX_SEND)
         if (send(remote_fd, buffer.c_str() + i, std::min(buffer.size() - i, MAX_SEND), 0) == -1)
-            throw std::system_error(std::error_code(errno, std::system_category()));
+            throw std::system_error(std::error_code(errno, std::general_category()));
 }
 
 std::string XMLSocketServer::get_policy_xml()
@@ -160,8 +159,8 @@ std::string XMLSocketServer::get_policy_xml()
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<!DOCTYPE cross-domain-policy SYSTEM \"/xml/dtds/cross-domain-policy.dtd\">\n"
         "<cross-domain-policy>\n"
-        "   <site-control permitted-cross-domain-policies=\"all\"/>\n"
-        "   <allow-access-from domain=\"*\"/>\n"
+        "    <site-control permitted-cross-domain-policies=\"all\"/>\n"
+        "    <allow-access-from domain=\"*\"/>\n"
         "</cross-domain-policy>\n";
 }
 
