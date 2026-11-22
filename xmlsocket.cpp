@@ -3,14 +3,11 @@
 #include <stdexcept>
 #include <algorithm>
 #include <functional>
-#include <system_error>
 
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-#include <iostream>
 
 #include "eventloop.hpp"
 #include "xmlsocket.hpp"
