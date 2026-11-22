@@ -26,7 +26,7 @@ class XMLSocketServer
             int val;
 
             if ((errno = ioctl(remote_fd, SIOCINQ, &val)))
-                throw std::system_error(std::error_code(errno, std::general_category()));
+                throw std::system_error(std::error_code(errno, std::generic_category()));
 
             return val;
         }
