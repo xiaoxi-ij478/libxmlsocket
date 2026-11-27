@@ -3,6 +3,7 @@
 
 #include <string>
 #include <unordered_set>
+#include <system_error>
 
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
@@ -27,7 +28,7 @@ class XMLSocketServer
             int val;
 
             if ((errno = ioctl(remote_fd, SIOCINQ, &val)))
-                throw std::system_error(std::error_code(errno, std::system_category()));
+                throw std::system_error(std::error_code(errno, std::generic_category()));
 
             return val;
         }
