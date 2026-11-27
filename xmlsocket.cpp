@@ -33,10 +33,8 @@ XMLSocketServer::~XMLSocketServer()
         close(listen_socket_fd);
     }
 
-    decltype(remote_fds) b_remote_fds(remote_fds);
-
-    for (int i : b_remote_fds)
-        close_fd(i);
+    for (int i : remote_fds)
+        close_fd_no_delete(i);
 }
 
 void XMLSocketServer::start_listen()
@@ -112,23 +110,23 @@ void XMLSocketServer::check_socket_policy_request(int remote_fd)
             throw std::system_error(std::error_code(errno, std::system_category()));
     }
 
-    if (buffer != "<policy-file-request/>\0") {
-        // this is not policy file request, transfer callback
-        looper.remove_fd_listener(remote_fd);
-        looper.add_fd_listener(
-            remote_fd,
-            std::bind(
-                std::mem_fn(&XMLSocketServer::on_socket_data_avail),
-                this,
-                std::placeholders::_1
-            )
-        );
+    if (buffer == "<policy-file-request/>\0") {
+        // this is policy file request, send it
+        send_data(remote_fd, get_policy_xml());
+        close_fd(remote_fd);
         return;
     }
 
-    // is policy ... send it
-    send_data(remote_fd, get_policy_xml());
-    close_fd(remote_fd);
+    // this is not policy file request, transfer callback
+    looper.remove_fd_listener(remote_fd);
+    looper.add_fd_listener(
+        remote_fd,
+        std::bind(
+            std::mem_fn(&XMLSocketServer::on_socket_data_avail),
+            this,
+            std::placeholders::_1
+        )
+    );
 }
 
 void XMLSocketServer::on_socket_data_avail(int remote_fd)
@@ -141,7 +139,15 @@ void XMLSocketServer::close_fd(int remote_fd)
     if (!remote_fds.count(remote_fd))
         return;
 
+    close_fd_no_delete(remote_fd);
     remote_fds.erase(remote_fd);
+}
+
+void XMLSocketServer::close_fd_no_delete(int remote_fd)
+{
+    if (!remote_fds.count(remote_fd))
+        return;
+
     looper.remove_fd_listener(remote_fd);
     close(remote_fd);
     on_connection_closed(remote_fd);

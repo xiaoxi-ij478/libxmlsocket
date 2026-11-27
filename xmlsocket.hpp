@@ -16,6 +16,7 @@ class XMLSocketServer
         void on_listen_socket_fd_accept(int);
         void check_socket_policy_request(int remote_fd);
         void on_socket_data_avail(int remote_fd);
+        void close_fd_no_delete(int remote_fd);
 
     protected:
         std::unordered_set<int> remote_fds;
